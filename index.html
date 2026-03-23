@@ -223,6 +223,55 @@
 
     .bar-fill { height: 100%; border-radius: 2px; }
 
+    .outcomes-block {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .outcome-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .outcome-label {
+      font-size: 14px;
+      color: #b0aba2;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .outcome-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .outcome-pct {
+      font-size: 18px;
+      font-weight: 500;
+      min-width: 44px;
+      text-align: right;
+    }
+
+    .outcome-bar-track {
+      width: 60px;
+      height: 3px;
+      background: #202020;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .outcome-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+    }
+
     .vol-line {
       font-size: 13px;
       font-weight: 500;
@@ -296,7 +345,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#2a2a2a;margin-left:8px;">v0.8</span>
+        <span style="color:#2a2a2a;margin-left:8px;">v0.9</span>
       </div>
       </div>
     </div>
@@ -468,37 +517,59 @@ async function fetchMarkets() {
         const events = data.events || [];
         if (events.length === 0) break;
 
-        // From each event, extract the best market (binary, most volume)
         for (const ev of events) {
-          const evTitle = ev.title || ev.sub_title || '';
+          const evTitle = ev.title || '';
           if (!evTitle || evTitle.length < 10) continue;
 
-          const markets = ev.markets || [];
-          // For binary events there's one market; for multi pick the one with most volume
-          let best = null;
-          for (const mk of markets) {
-            const vol = parseFloat(mk.volume_fp || '0');
-            const bid = parseFloat(mk.yes_bid_dollars || '0');
-            const ask = parseFloat(mk.yes_ask_dollars || '0');
+          const markets = (ev.markets || []).filter(mk => {
+            const bid  = parseFloat(mk.yes_bid_dollars  || '0');
+            const ask  = parseFloat(mk.yes_ask_dollars  || '0');
             const last = parseFloat(mk.last_price_dollars || '0');
-            if (bid === 0 && ask === 0 && last === 0) continue;
-            if (!best || vol > parseFloat(best.volume_fp || '0')) best = mk;
-          }
+            return bid > 0 || ask > 0 || last > 0;
+          });
 
-          if (best) {
-            const bid  = parseFloat(best.yes_bid_dollars || '0');
-            const ask  = parseFloat(best.yes_ask_dollars || '0');
-            const last = parseFloat(best.last_price_dollars || '0');
+          if (markets.length === 0) continue;
+
+          const totalVol = markets.reduce((s, mk) => s + parseFloat(mk.volume_fp || '0'), 0);
+
+          if (markets.length === 1) {
+            // Binary yes/no market
+            const mk = markets[0];
+            const bid  = parseFloat(mk.yes_bid_dollars  || '0');
+            const ask  = parseFloat(mk.yes_ask_dollars  || '0');
+            const last = parseFloat(mk.last_price_dollars || '0');
             const yesFrac = bid > 0 ? bid : ask > 0 ? (1 - ask) : last;
-            const vol = parseFloat(best.volume_fp || best.volume_24h_fp || '0');
+            const yes = Math.max(1, Math.min(99, Math.round(yesFrac * 100)));
             all.push({
               title: evTitle,
-              yes: Math.max(1, Math.min(99, Math.round(yesFrac * 100))),
-              volume: Math.round(vol),
-              category: ev.category || ''
+              yes,
+              volume: Math.round(totalVol),
+              category: ev.category || '',
+              type: 'binary'
             });
-          } else if (markets.length === 0) {
-            // Event with no nested markets -- skip
+          } else {
+            // Multi-outcome -- score each outcome by its yes price (probability)
+            const outcomes = markets.map(mk => {
+              const bid  = parseFloat(mk.yes_bid_dollars  || '0');
+              const ask  = parseFloat(mk.yes_ask_dollars  || '0');
+              const last = parseFloat(mk.last_price_dollars || '0');
+              const pct = Math.round((bid > 0 ? bid : ask > 0 ? (1 - ask) : last) * 100);
+              const label = mk.subtitle || mk.title || mk.ticker || '';
+              return { label, pct, vol: parseFloat(mk.volume_fp || '0') };
+            }).filter(o => o.label && o.pct > 0)
+              .sort((a, b) => b.pct - a.pct)
+              .slice(0, 3);
+
+            if (outcomes.length >= 2) {
+              all.push({
+                title: evTitle,
+                yes: outcomes[0].pct,
+                volume: Math.round(totalVol),
+                category: ev.category || '',
+                type: 'multi',
+                outcomes
+              });
+            }
           }
         }
 
@@ -684,19 +755,40 @@ function render() {
     const card = document.createElement('div');
     card.className = 'mkt-card';
     const vol = formatVol(m.volume);
-    card.innerHTML =
-      '<div>' +
-        '<span class="cat-badge ' + c + '-badge">' + catLabel(m.category) + '</span>' +
-        '<div class="card-question">' + m.title + '</div>' +
-      '</div>' +
-      '<div>' +
-        '<div class="odds-row">' +
-          '<div><span class="yes-pct ' + c + '-color">' + m.yes + '%</span><span class="yes-label">yes</span></div>' +
-          '<span class="no-label">' + (100 - m.yes) + '% no</span>' +
+    const isMulti = m.type === 'multi' && m.outcomes && m.outcomes.length >= 2;
+
+    if (isMulti) {
+      const rows = m.outcomes.map(o =>
+        '<div class="outcome-row">' +
+          '<div class="outcome-label">' + o.label + '</div>' +
+          '<div class="outcome-right">' +
+            '<span class="outcome-pct ' + c + '-color">' + o.pct + '%</span>' +
+            '<div class="outcome-bar-track"><div class="outcome-bar-fill ' + c + '-bar" style="width:' + Math.min(100, o.pct * 2) + '%"></div></div>' +
+          '</div>' +
+        '</div>'
+      ).join('');
+      card.innerHTML =
+        '<div>' +
+          '<span class="cat-badge ' + c + '-badge">' + catLabel(m.category) + '</span>' +
+          '<div class="card-question" style="margin-bottom:10px;">' + m.title + '</div>' +
         '</div>' +
-        '<div class="bar-track"><div class="bar-fill ' + c + '-bar" style="width:' + m.yes + '%"></div></div>' +
-        (vol ? '<div class="vol-line">' + vol + '</div>' : '') +
-      '</div>';
+        '<div class="outcomes-block">' + rows + '</div>' +
+        (vol ? '<div class="vol-line" style="margin-top:8px;">' + vol + '</div>' : '');
+    } else {
+      card.innerHTML =
+        '<div>' +
+          '<span class="cat-badge ' + c + '-badge">' + catLabel(m.category) + '</span>' +
+          '<div class="card-question">' + m.title + '</div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="odds-row">' +
+            '<div><span class="yes-pct ' + c + '-color">' + m.yes + '%</span><span class="yes-label">yes</span></div>' +
+            '<span class="no-label">' + (100 - m.yes) + '% no</span>' +
+          '</div>' +
+          '<div class="bar-track"><div class="bar-fill ' + c + '-bar" style="width:' + m.yes + '%"></div></div>' +
+          (vol ? '<div class="vol-line">' + vol + '</div>' : '') +
+        '</div>';
+    }
     grid.appendChild(card);
     setTimeout(function() { card.classList.add('visible'); }, 40 + i * 70);
   });
