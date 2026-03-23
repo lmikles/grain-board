@@ -199,7 +199,7 @@
 
     .vol-line { font-size: 11px; color: #2e2e2e; }
 
-    /* Grain green -- primary category */
+    /* Grain green -- Philly / Delaware */
     .grain-color  { color: #9ab59e; }
     .grain-badge  { background: #1a2e1c; color: #9ab59e; }
     .grain-bar    { background: #9ab59e; }
@@ -213,6 +213,11 @@
     .pop-color    { color: #c49a52; }
     .pop-badge    { background: #2a1e08; color: #d4aa6a; }
     .pop-bar      { background: #c49a52; }
+
+    /* Wild card -- coral / warm red */
+    .wild-color   { color: #c97c5a; }
+    .wild-badge   { background: #2e1208; color: #d9956e; }
+    .wild-bar     { background: #c97c5a; }
 
     #footer {
       display: flex;
@@ -291,6 +296,24 @@ const POP_KEYWORDS = [
   'series','artist','song','chart','billboard','host','actor','actress',
   'singer','streaming','concert','tour','record','debut','release'
 ];
+const WILDCARD_KEYWORDS = [
+  'elon','kanye','ye','trump','musk','kardashian','nicolas cage','cage',
+  'alien','ufo','bigfoot','shark','tornado','volcano','meteor','earthquake',
+  'robot','ai takeover','time travel','colonize','mars','moon','apocalypse',
+  'resign','arrested','impeach','marry','divorce','baby','pregnant',
+  'comeback','return','retire','fired','quit','breakup','beef',
+  'naked','streaker','crowd surf','punch','fight','banned','suspended',
+  'worst','best ever','goat','cursed','haunted','rigged','conspiracy'
+];
+const WILDCARD_STRUCTURES = [
+  /will .+ ever /i,
+  /will there be a .+ in 20/i,
+  /will .+ apologize/i,
+  /will .+ go to (jail|prison)/i,
+  /will .+ get (married|divorced|arrested)/i,
+  /will anyone .+/i,
+  /how many .+ will/i,
+];
 const BLOCKLIST = [
   'cpi','gdp','inflation','yield','treasury','fed funds','basis point',
   'crude','bitcoin','ethereum','s&p','nasdaq','dow','interest rate',
@@ -298,12 +321,21 @@ const BLOCKLIST = [
   'federal reserve','debt ceiling','tariff','trade war','bond','index'
 ];
 
-function classify(title) {
+function isWildcard(title) {
+  const t = (title || '').toLowerCase();
+  if (WILDCARD_KEYWORDS.some(k => t.includes(k))) return true;
+  if (WILDCARD_STRUCTURES.some(rx => rx.test(title))) return true;
+  return false;
+}
+
+function classify(title, yes) {
   const t = (title || '').toLowerCase();
   if (BLOCKLIST.some(k => t.includes(k))) return null;
+  if (isWildcard(title) && yes >= 5 && yes <= 40) return 'wildcard';
   if (PHILLY_KEYWORDS.some(k => t.includes(k))) return 'philly';
   if (SPORT_KEYWORDS.some(k => t.includes(k))) return 'sports';
   if (POP_KEYWORDS.some(k => t.includes(k))) return 'pop';
+  if (isWildcard(title)) return 'wildcard';
   return null;
 }
 
@@ -312,11 +344,13 @@ function barScore(market) {
   const yes = market.yes_bid || market.last_price || 50;
   let score = 0;
   if (PHILLY_KEYWORDS.some(k => t.includes(k))) score += 55;
+  if (isWildcard(market.title)) score += 35;
   const tension = 50 - Math.abs(yes - 50);
   score += tension * 1.5;
+  if (yes >= 5 && yes <= 20) score += 15;
   const words = (market.title || '').split(' ').length;
   if (words >= 6 && words <= 18) score += 10;
-  if (yes < 10 || yes > 90) score -= 30;
+  if (yes < 10 || yes > 90) score -= 20;
   if (yes < 5 || yes > 95) return -999;
   if (market.volume) score += Math.min(25, Math.log10(market.volume + 1) * 6);
   return score;
@@ -331,12 +365,12 @@ function getFallback() {
   return [
     { title: 'Will the Eagles win the Super Bowl this season?', yes: 31, category: 'philly', volume: 58000 },
     { title: 'Will the Phillies make the World Series?', yes: 44, category: 'philly', volume: 41000 },
-    { title: 'Will the Sixers make the NBA Playoffs?', yes: 55, category: 'philly', volume: 29000 },
-    { title: 'Will the Flyers make the playoffs this year?', yes: 38, category: 'philly', volume: 21000 },
+    { title: 'Will Elon Musk run for political office in 2025?', yes: 12, category: 'wildcard', volume: 35000 },
     { title: 'Will Taylor Swift release a new album in 2025?', yes: 72, category: 'pop', volume: 42000 },
+    { title: 'Will the Sixers make the NBA Playoffs?', yes: 55, category: 'philly', volume: 29000 },
     { title: 'Will Beyonce win Album of the Year at the Grammys?', yes: 58, category: 'pop', volume: 31000 },
     { title: 'Will LeBron James retire before the 2026 season?', yes: 24, category: 'sports', volume: 38000 },
-    { title: 'Will a Marvel film top the box office this year?', yes: 67, category: 'pop', volume: 22000 },
+    { title: 'Will anyone get arrested at the Oscars this year?', yes: 8, category: 'wildcard', volume: 19000 },
   ];
 }
 
@@ -361,13 +395,16 @@ async function fetchMarkets() {
     const unique = all.filter(m => { if (seen.has(m.ticker)) return false; seen.add(m.ticker); return true; });
 
     let scored = unique
-      .map(m => ({
-        title: m.title,
-        yes: Math.round(m.yes_bid || m.last_price || 50),
-        category: classify(m.title),
-        volume: m.volume || 0,
-        score: barScore(m)
-      }))
+      .map(m => {
+        const yes = Math.round(m.yes_bid || m.last_price || 50);
+        return {
+          title: m.title,
+          yes: yes,
+          category: classify(m.title, yes),
+          volume: m.volume || 0,
+          score: barScore(m)
+        };
+      })
       .filter(m => m.category && m.score > -999)
       .sort((a, b) => b.score - a.score);
 
@@ -377,16 +414,37 @@ async function fetchMarkets() {
       if (!seen2.has(m.title)) { deduped.push(m); seen2.add(m.title); }
     }
 
-    let top = deduped.slice(0, 24);
-    if (top.length < 4) top = getFallback();
+    // Pull wildcards and regulars separately, then interleave
+    const wildcards = deduped.filter(m => m.category === 'wildcard');
+    const regulars  = deduped.filter(m => m.category !== 'wildcard');
 
-    pages = [];
-    for (let i = 0; i < top.length; i += 4) {
-      const slice = top.slice(i, i + 4);
-      if (slice.length === 4) pages.push(slice);
+    // Build pages: sprinkle wildcards naturally based on score rank
+    // Merge back together respecting overall score order, wildcards capped at 2 per page
+    const merged = [];
+    let wi = 0, ri = 0;
+    while (merged.length < 24 && (wi < wildcards.length || ri < regulars.length)) {
+      const wScore = wi < wildcards.length ? wildcards[wi].score : -Infinity;
+      const rScore = ri < regulars.length  ? regulars[ri].score  : -Infinity;
+      if (wScore >= rScore) { merged.push(wildcards[wi++]); }
+      else                  { merged.push(regulars[ri++]); }
     }
-    if (pages.length === 0) pages = [top.slice(0, 4)];
 
+    // Enforce max 2 wildcards per page-of-4
+    const paged = [];
+    let buf = [], wCount = 0;
+    for (const m of merged) {
+      if (m.category === 'wildcard') {
+        if (wCount >= 2) continue;
+        wCount++;
+      }
+      buf.push(m);
+      if (buf.length === 4) { paged.push(buf); buf = []; wCount = 0; }
+    }
+
+    let top = paged;
+    if (top.length === 0) top = [getFallback().slice(0, 4)];
+
+    pages = top;
     render();
     if (timerInterval === null) startTimer();
   } catch(e) {
@@ -399,12 +457,14 @@ async function fetchMarkets() {
 function cc(cat) {
   if (cat === 'philly') return 'grain';
   if (cat === 'sports') return 'sport';
+  if (cat === 'wildcard') return 'wild';
   return 'pop';
 }
 
 function catLabel(cat) {
   if (cat === 'philly') return 'Philly / Delaware';
   if (cat === 'sports') return 'Sports';
+  if (cat === 'wildcard') return 'Wild card';
   return 'Pop Culture';
 }
 
