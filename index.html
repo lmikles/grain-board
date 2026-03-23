@@ -461,13 +461,10 @@ async function fetchMarkets() {
         const data = await r.json();
         if (!data.markets || data.markets.length === 0) break;
         all = all.concat(data.markets);
-        // Log the first market object so we can see the real field names
+        // Show full structure of first few markets
         if (pageCount === 0 && data.markets.length > 0) {
-          const sample = data.markets[0];
-          console.log('KALSHI SAMPLE MARKET:', JSON.stringify(sample));
-          console.log('KALSHI KEYS:', Object.keys(sample).join(', '));
-          console.log('yes_bid:', sample.yes_bid, 'last_price:', sample.last_price, 'result:', sample.result);
-          statusMsg = 'DEBUG: ' + Object.keys(sample).join(', ');
+          console.log('RAW MARKETS (first 3):', JSON.stringify(data.markets.slice(0,3), null, 2));
+          statusMsg = 'KEYS: ' + Object.keys(data.markets[0]).join(', ');
         }
         nextCursor = data.cursor || null;
         pageCount++;
