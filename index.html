@@ -296,7 +296,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#2a2a2a;margin-left:8px;">v0.7</span>
+        <span style="color:#2a2a2a;margin-left:8px;">v0.8</span>
       </div>
       </div>
     </div>
@@ -381,7 +381,10 @@ function classify(title, yes) {
 
 function barScore(market) {
   const t = (market.title || '').toLowerCase();
-  const yes = market.yes_bid || market.last_price || 50;
+  // Accept pre-computed yes (0-100) or derive from dollar fields
+  const yes = market.yes !== undefined ? market.yes
+    : market.yes_bid_dollars !== undefined ? Math.round(market.yes_bid_dollars * 100)
+    : 50;
   let score = 0;
   if (PHILLY_KEYWORDS.some(k => t.includes(k))) score += 55;
   if (isWildcard(market.title)) score += 35;
@@ -392,7 +395,8 @@ function barScore(market) {
   if (words >= 6 && words <= 18) score += 10;
   if (yes < 10 || yes > 90) score -= 20;
   if (yes < 5 || yes > 95) return -999;
-  if (market.volume) score += Math.min(25, Math.log10(market.volume + 1) * 6);
+  const vol = parseFloat(market.volume || 0);
+  if (vol > 0) score += Math.min(25, Math.log10(vol + 1) * 6);
   return score;
 }
 
@@ -473,7 +477,7 @@ async function fetchMarkets() {
               console.log(k + ':', v);
             }
           });
-          statusMsg = 'v0.7 | KEYS: ' + keys.join(', ');
+          statusMsg = 'v0.8 | KEYS: ' + keys.join(', ');
         }
         nextCursor = data.cursor || null;
         pageCount++;
@@ -487,15 +491,32 @@ async function fetchMarkets() {
       seenTickers.add(m.ticker); return true;
     });
 
-    // Score and classify -- accept anything with a readable title
+    // Score and classify -- all price fields come back as strings, parse as floats
     const scoredList = [];
     for (const m of unique) {
-      if (!m.title || m.title.length < 10) continue;
-      const yes = Math.round(m.yes_bid || m.last_price || 50);
-      const cat = classify(m.title, yes);
-      const sc = barScore(m);
+      const title = m.title || '';
+      if (!title || title.length < 10) continue;
+
+      // Parse price -- prefer yes_bid, fall back to yes_ask, then last_price
+      const yesBid  = parseFloat(m.yes_bid_dollars  || '0');
+      const yesAsk  = parseFloat(m.yes_ask_dollars  || '0');
+      const lastPx  = parseFloat(m.last_price_dollars || '0');
+      const vol     = parseFloat(m.volume_fp || m.volume_24h_fp || '0');
+
+      // Skip markets with no trading activity at all
+      if (yesBid === 0 && yesAsk === 0 && lastPx === 0) continue;
+      if (vol === 0 && lastPx === 0) continue;
+
+      // Best price estimate: bid if available, else ask complement, else last
+      let yesFrac = yesBid > 0 ? yesBid
+        : yesAsk > 0 ? (1 - yesAsk)
+        : lastPx;
+      const yes = Math.max(1, Math.min(99, Math.round(yesFrac * 100)));
+
+      const cat = classify(title, yes);
+      const sc = barScore({ title, yes, volume: vol });
       if (cat && sc > -999) {
-        scoredList.push({ title: m.title, yes, category: cat, volume: m.volume || 0, score: sc });
+        scoredList.push({ title, yes, category: cat, volume: Math.round(vol), score: sc });
       }
     }
     scoredList.sort((a, b) => b.score - a.score);
@@ -513,14 +534,23 @@ async function fetchMarkets() {
       const extra = [];
       const extraSeen = new Set(seenTitles);
       for (const m of unique) {
-        if (!m.title || m.title.length < 10 || extraSeen.has(m.title)) continue;
-        const yes = Math.round(m.yes_bid || m.last_price || 50);
+        const mt = m.title || '';
+        if (!mt || mt.length < 10 || extraSeen.has(mt)) continue;
+        const yesBid2  = parseFloat(m.yes_bid_dollars  || '0');
+        const yesAsk2  = parseFloat(m.yes_ask_dollars  || '0');
+        const lastPx2  = parseFloat(m.last_price_dollars || '0');
+        if (yesBid2 === 0 && yesAsk2 === 0 && lastPx2 === 0) continue;
+        let yesFrac2 = yesBid2 > 0 ? yesBid2 : yesAsk2 > 0 ? (1 - yesAsk2) : lastPx2;
+        const yes = Math.max(1, Math.min(99, Math.round(yesFrac2 * 100)));
         if (yes < 5 || yes > 95) continue;
         // Accept anything that starts with "Will" as a readable binary question
-        if (/^will /i.test(m.title) || /^(who|what|when|which|how many)/i.test(m.title)) {
-          const cat = classify(m.title, yes) || 'sports';
-          extra.push({ title: m.title, yes, category: cat, volume: m.volume || 0, score: 10 });
-          extraSeen.add(m.title);
+        const t2 = m.subtitle || m.title || '';
+        if (/^will /i.test(t2) || /^(who|what|when|which|how many)/i.test(t2)) {
+          const yesFrac2 = m.yes_bid_dollars ?? m.yes_ask_dollars ?? m.last_price_dollars ?? 0.5;
+          const yes2 = Math.round(yesFrac2 * 100);
+          const cat = classify(t2, yes2) || 'sports';
+          extra.push({ title: t2, yes: yes2, category: cat, volume: Math.round(m.dollar_volume ?? m.volume_fp ?? 0), score: 10 });
+          extraSeen.add(mt);
         }
       }
       pool = pool.concat(extra).slice(0, 240);
