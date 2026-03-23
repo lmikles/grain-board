@@ -258,6 +258,7 @@
       gap: 7px;
       flex-shrink: 0;
       padding-top: 2px;
+      position: relative;
     }
 
     .page-dot {
@@ -313,7 +314,7 @@
 </div>
 
 <script>
-const API = 'https://api.elections.kalshi.com/trade-api/v2';
+const API = 'https://grain-board.lee-1d3.workers.dev/trade-api/v2';
 const SLIDE_DURATION = 30;
 const CIRCUMFERENCE = 2 * Math.PI * 14;
 
@@ -398,134 +399,189 @@ let pages = [];
 let currentPage = 0;
 let timerSec = SLIDE_DURATION;
 let timerInterval = null;
+let statusMsg = 'Loading...';
+
+function buildFallbackPages() {
+  const fb = getFallback();
+  const philly = fb.filter(m => m.category === 'philly');
+  const rest = fb.filter(m => m.category !== 'philly');
+  const out = [];
+  let ri = 0, pi = 0;
+  while (ri < rest.length) {
+    const slide = [];
+    if (philly.length) { slide.push(philly[pi++ % philly.length]); }
+    while (slide.length < 4 && ri < rest.length) { slide.push(rest[ri++]); }
+    if (slide.length === 4) out.push(slide);
+  }
+  return out.length ? out : [fb.slice(0, 4)];
+}
 
 function getFallback() {
   return [
-    { title: 'Will the Eagles win the Super Bowl this season?', yes: 31, category: 'philly', volume: 58000 },
-    { title: 'Will the Phillies make the World Series?', yes: 44, category: 'philly', volume: 41000 },
-    { title: 'Will Elon Musk run for political office in 2025?', yes: 12, category: 'wildcard', volume: 35000 },
-    { title: 'Will Taylor Swift release a new album in 2025?', yes: 72, category: 'pop', volume: 42000 },
-    { title: 'Will the Sixers make the NBA Playoffs?', yes: 55, category: 'philly', volume: 29000 },
-    { title: 'Will Beyonce win Album of the Year at the Grammys?', yes: 58, category: 'pop', volume: 31000 },
-    { title: 'Will LeBron James retire before the 2026 season?', yes: 24, category: 'sports', volume: 38000 },
-    { title: 'Will anyone get arrested at the Oscars this year?', yes: 8, category: 'wildcard', volume: 19000 },
+    { title: 'Will the Eagles win the Super Bowl this season?', yes: 31, category: 'philly', volume: 580000 },
+    { title: 'Will the Phillies make the World Series?', yes: 44, category: 'philly', volume: 410000 },
+    { title: 'Will the Sixers make the NBA Playoffs?', yes: 55, category: 'philly', volume: 290000 },
+    { title: 'Will the Flyers make the playoffs this year?', yes: 38, category: 'philly', volume: 210000 },
+    { title: 'Will Taylor Swift release a new album in 2026?', yes: 68, category: 'pop', volume: 420000 },
+    { title: 'Will Beyonce win Album of the Year at the Grammys?', yes: 58, category: 'pop', volume: 310000 },
+    { title: 'Will LeBron James retire before next season?', yes: 24, category: 'sports', volume: 380000 },
+    { title: 'Will a Marvel film top the box office this year?', yes: 67, category: 'pop', volume: 220000 },
+    { title: 'Will Elon Musk run for political office in 2026?', yes: 12, category: 'wildcard', volume: 350000 },
+    { title: 'Will anyone get arrested at the Oscars this year?', yes: 8, category: 'wildcard', volume: 190000 },
+    { title: 'Will any NFL team go undefeated in the regular season?', yes: 9, category: 'sports', volume: 280000 },
+    { title: 'Will the NBA Finals go to 7 games this year?', yes: 41, category: 'sports', volume: 175000 },
+    { title: 'Will Caitlin Clark win WNBA MVP this season?', yes: 62, category: 'sports', volume: 320000 },
+    { title: 'Will there be a Hollywood writers strike in 2026?', yes: 14, category: 'wildcard', volume: 95000 },
+    { title: 'Will Netflix release a movie in theaters this year?', yes: 47, category: 'pop', volume: 140000 },
+    { title: 'Will a video game adaptation win an Oscar?', yes: 18, category: 'pop', volume: 88000 },
+    { title: 'Will the Super Bowl halftime show get more viewers than the game?', yes: 22, category: 'sports', volume: 165000 },
+    { title: 'Will Kendrick Lamar perform at a major award show this year?', yes: 71, category: 'pop', volume: 195000 },
+    { title: 'Will any MLB team break the home run record this season?', yes: 16, category: 'sports', volume: 142000 },
+    { title: 'Will Penn State make the College Football Playoff?', yes: 48, category: 'philly', volume: 230000 },
+    { title: 'Will a female artist have the best-selling album of 2026?', yes: 63, category: 'pop', volume: 178000 },
+    { title: 'Will the NFL move a team to a new city by 2028?', yes: 29, category: 'sports', volume: 210000 },
+    { title: 'Will Kanye West release an album in 2026?', yes: 34, category: 'wildcard', volume: 155000 },
+    { title: 'Will there be a sequel to a movie that definitely should not have one?', yes: 77, category: 'wildcard', volume: 88000 },
   ];
 }
 
 async function fetchMarkets() {
   try {
     let all = [];
+    const seedUrl = API + '/markets?status=open&limit=200';
+    let nextCursor = null;
+    let pageCount = 0;
+    const MAX_PAGES = 8;
 
-    // Pull large batches with cursor pagination for depth
-    const baseUrls = [
-      API + '/markets?status=open&limit=200&category=Sports',
-      API + '/markets?status=open&limit=200&category=Entertainment',
-      API + '/markets?status=open&limit=200',
-    ];
-
-    for (const url of baseUrls) {
+    do {
+      const url = nextCursor ? seedUrl + '&cursor=' + encodeURIComponent(nextCursor) : seedUrl;
       try {
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-        if (!r.ok) continue;
+        if (!r.ok) break;
         const data = await r.json();
-        if (data.markets) all = all.concat(data.markets);
-
-        // Follow cursor for up to 3 more pages per endpoint
-        let cursor = data.cursor;
-        let extra = 0;
-        while (cursor && extra < 3) {
-          const r2 = await fetch(url + '&cursor=' + encodeURIComponent(cursor), { headers: { 'Accept': 'application/json' } });
-          if (!r2.ok) break;
-          const d2 = await r2.json();
-          if (d2.markets) all = all.concat(d2.markets);
-          cursor = d2.cursor;
-          extra++;
+        if (!data.markets || data.markets.length === 0) break;
+        all = all.concat(data.markets);
+        // Log the first market object so we can see the real field names
+        if (pageCount === 0 && data.markets.length > 0) {
+          const sample = data.markets[0];
+          console.log('KALSHI SAMPLE MARKET:', JSON.stringify(sample));
+          console.log('KALSHI KEYS:', Object.keys(sample).join(', '));
+          console.log('yes_bid:', sample.yes_bid, 'last_price:', sample.last_price, 'result:', sample.result);
+          statusMsg = 'DEBUG: ' + Object.keys(sample).join(', ');
         }
-      } catch(e) {}
-    }
+        nextCursor = data.cursor || null;
+        pageCount++;
+      } catch(e) { break; }
+    } while (nextCursor && pageCount < MAX_PAGES);
 
     // Deduplicate by ticker
-    const seen = new Set();
-    const unique = all.filter(m => { if (seen.has(m.ticker)) return false; seen.add(m.ticker); return true; });
+    const seenTickers = new Set();
+    const unique = all.filter(m => {
+      if (!m.ticker || seenTickers.has(m.ticker)) return false;
+      seenTickers.add(m.ticker); return true;
+    });
 
-    // Score and classify everything
-    let scored = unique
-      .map(m => {
-        const yes = Math.round(m.yes_bid || m.last_price || 50);
-        return {
-          title: m.title,
-          yes: yes,
-          category: classify(m.title, yes),
-          volume: m.volume || 0,
-          score: barScore(m)
-        };
-      })
-      .filter(m => m.category && m.score > -999)
-      .sort((a, b) => b.score - a.score);
+    // Score and classify -- accept anything with a readable title
+    const scoredList = [];
+    for (const m of unique) {
+      if (!m.title || m.title.length < 10) continue;
+      const yes = Math.round(m.yes_bid || m.last_price || 50);
+      const cat = classify(m.title, yes);
+      const sc = barScore(m);
+      if (cat && sc > -999) {
+        scoredList.push({ title: m.title, yes, category: cat, volume: m.volume || 0, score: sc });
+      }
+    }
+    scoredList.sort((a, b) => b.score - a.score);
 
     // Deduplicate by title
+    const seenTitles = new Set();
     const deduped = [];
-    const seen2 = new Set();
-    for (const m of scored) {
-      if (!seen2.has(m.title)) { deduped.push(m); seen2.add(m.title); }
+    for (const m of scoredList) {
+      if (!seenTitles.has(m.title)) { deduped.push(m); seenTitles.add(m.title); }
+    }
+
+    // If we got very few results, loosen the filter and accept anything bar-readable
+    let pool = deduped;
+    if (pool.length < 20) {
+      const extra = [];
+      const extraSeen = new Set(seenTitles);
+      for (const m of unique) {
+        if (!m.title || m.title.length < 10 || extraSeen.has(m.title)) continue;
+        const yes = Math.round(m.yes_bid || m.last_price || 50);
+        if (yes < 5 || yes > 95) continue;
+        // Accept anything that starts with "Will" as a readable binary question
+        if (/^will /i.test(m.title) || /^(who|what|when|which|how many)/i.test(m.title)) {
+          const cat = classify(m.title, yes) || 'sports';
+          extra.push({ title: m.title, yes, category: cat, volume: m.volume || 0, score: 10 });
+          extraSeen.add(m.title);
+        }
+      }
+      pool = pool.concat(extra).slice(0, 240);
     }
 
     // Separate into pools
-    const philly    = deduped.filter(m => m.category === 'philly');
-    const wildcards = deduped.filter(m => m.category === 'wildcard');
-    const regulars  = deduped.filter(m => m.category !== 'wildcard' && m.category !== 'philly');
+    const phillyPool   = pool.filter(m => m.category === 'philly');
+    const wildcardPool = pool.filter(m => m.category === 'wildcard');
+    const regularPool  = pool.filter(m => m.category !== 'wildcard' && m.category !== 'philly');
 
-    // Merge wildcards + regulars by score into one ordered non-philly pool
+    // Merge wildcards + regulars by score
     const nonPhilly = [];
     let wi = 0, ri = 0;
-    while (wi < wildcards.length || ri < regulars.length) {
-      const wScore = wi < wildcards.length ? wildcards[wi].score : -Infinity;
-      const rScore = ri < regulars.length  ? regulars[ri].score  : -Infinity;
-      if (wScore >= rScore) { nonPhilly.push(wildcards[wi++]); }
-      else                  { nonPhilly.push(regulars[ri++]); }
+    while (wi < wildcardPool.length || ri < regularPool.length) {
+      const wScore = wi < wildcardPool.length ? wildcardPool[wi].score : -Infinity;
+      const rScore = ri < regularPool.length  ? regularPool[ri].score  : -Infinity;
+      if (wScore >= rScore) nonPhilly.push(wildcardPool[wi++]);
+      else nonPhilly.push(regularPool[ri++]);
     }
 
-    // Target 60 slides = 30 minutes at 30s each
-    // Philly cards recycle; everything else appears once per cycle
+    // Build slides: 1 recycling Philly + 3 unique non-Philly each
     const TARGET_SLIDES = 60;
-    const builtPages = [];
+    const builtSlides = [];
     let npIdx = 0;
     let phillyIdx = 0;
 
-    while (builtPages.length < TARGET_SLIDES && npIdx < nonPhilly.length) {
+    while (builtSlides.length < TARGET_SLIDES && npIdx < nonPhilly.length) {
       const slide = [];
-      let wildcardCount = 0;
+      let wcCount = 0;
 
-      // 1 Philly card per slide (cycles through, repeats when exhausted)
-      if (philly.length > 0) {
-        slide.push(philly[phillyIdx % philly.length]);
+      if (phillyPool.length > 0) {
+        slide.push(phillyPool[phillyIdx % phillyPool.length]);
         phillyIdx++;
       }
 
-      // Fill remaining 3 slots from nonPhilly (each card appears once only)
       while (slide.length < 4 && npIdx < nonPhilly.length) {
         const m = nonPhilly[npIdx++];
-        if (m.category === 'wildcard' && wildcardCount >= 2) continue;
-        if (m.category === 'wildcard') wildcardCount++;
+        if (m.category === 'wildcard' && wcCount >= 2) continue;
+        if (m.category === 'wildcard') wcCount++;
         slide.push(m);
       }
 
-      if (slide.length < 4) break;
+      if (slide.length < 4) {
+        // Pad with fallback cards rather than drop the slide
+        const fb = getFallback();
+        while (slide.length < 4) slide.push(fb[slide.length % fb.length]);
+      }
 
-      // Shuffle so Philly card isn't always top-left
       for (let i = slide.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [slide[i], slide[j]] = [slide[j], slide[i]];
       }
-
-      builtPages.push(slide);
+      builtSlides.push(slide);
     }
 
-    pages = builtPages.length > 0 ? builtPages : [getFallback().slice(0, 4)];
+    if (builtSlides.length > 0) {
+      pages = builtSlides;
+      statusMsg = 'Live: ' + unique.length + ' fetched, ' + pool.length + ' matched, ' + pages.length + ' slides';
+    } else {
+      pages = buildFallbackPages();
+      statusMsg = 'Fallback: ' + pages.length + ' slides (no API matches)';
+    }
     render();
     if (timerInterval === null) startTimer();
   } catch(e) {
-    pages = [getFallback().slice(0, 4)];
+    pages = buildFallbackPages();
+    statusMsg = 'Error: ' + (e.message || e) + ' — fallback ' + pages.length + ' slides';
     render();
     if (timerInterval === null) startTimer();
   }
@@ -561,9 +617,11 @@ function render() {
 
   const footer = document.getElementById('footer');
   footer.style.display = 'flex';
-  footer.innerHTML = pages.map((_, i) =>
-    '<div class="page-dot ' + (i === currentPage ? 'active' : '') + '"></div>'
-  ).join('');
+  footer.innerHTML =
+    '<span style="font-size:10px;color:#2a2a2a;position:absolute;left:40px;">' + statusMsg + '</span>' +
+    pages.map((_, i) =>
+      '<div class="page-dot ' + (i === currentPage ? 'active' : '') + '"></div>'
+    ).join('');
 
   const page = pages[currentPage] || [];
   const grid = document.createElement('div');
