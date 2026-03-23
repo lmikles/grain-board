@@ -452,8 +452,9 @@ function getFallback() {
 
 async function fetchMarkets() {
   try {
+    // Fetch events (clean human-readable titles) rather than raw market contracts
     let all = [];
-    const seedUrl = API + '/markets?status=open&limit=200';
+    const seedUrl = API + '/events?status=open&limit=200&with_nested_markets=true';
     let nextCursor = null;
     let pageCount = 0;
     const MAX_PAGES = 8;
@@ -464,59 +465,63 @@ async function fetchMarkets() {
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
         if (!r.ok) break;
         const data = await r.json();
-        if (!data.markets || data.markets.length === 0) break;
-        all = all.concat(data.markets);
-        if (pageCount === 0 && data.markets.length > 0) {
-          const s = data.markets[0];
-          const keys = Object.keys(s);
-          console.log('ALL KEYS:', keys.join(', '));
-          // Print every field that might be a price or title
-          keys.forEach(k => {
-            const v = s[k];
-            if (typeof v === 'number' || (typeof v === 'string' && v.length < 120)) {
-              console.log(k + ':', v);
-            }
-          });
-          statusMsg = 'v0.8 | KEYS: ' + keys.join(', ');
+        const events = data.events || [];
+        if (events.length === 0) break;
+
+        // From each event, extract the best market (binary, most volume)
+        for (const ev of events) {
+          const evTitle = ev.title || ev.sub_title || '';
+          if (!evTitle || evTitle.length < 10) continue;
+
+          const markets = ev.markets || [];
+          // For binary events there's one market; for multi pick the one with most volume
+          let best = null;
+          for (const mk of markets) {
+            const vol = parseFloat(mk.volume_fp || '0');
+            const bid = parseFloat(mk.yes_bid_dollars || '0');
+            const ask = parseFloat(mk.yes_ask_dollars || '0');
+            const last = parseFloat(mk.last_price_dollars || '0');
+            if (bid === 0 && ask === 0 && last === 0) continue;
+            if (!best || vol > parseFloat(best.volume_fp || '0')) best = mk;
+          }
+
+          if (best) {
+            const bid  = parseFloat(best.yes_bid_dollars || '0');
+            const ask  = parseFloat(best.yes_ask_dollars || '0');
+            const last = parseFloat(best.last_price_dollars || '0');
+            const yesFrac = bid > 0 ? bid : ask > 0 ? (1 - ask) : last;
+            const vol = parseFloat(best.volume_fp || best.volume_24h_fp || '0');
+            all.push({
+              title: evTitle,
+              yes: Math.max(1, Math.min(99, Math.round(yesFrac * 100))),
+              volume: Math.round(vol),
+              category: ev.category || ''
+            });
+          } else if (markets.length === 0) {
+            // Event with no nested markets -- skip
+          }
+        }
+
+        if (pageCount === 0) {
+          console.log('Sample event:', JSON.stringify((data.events||[])[0], null, 2));
         }
         nextCursor = data.cursor || null;
         pageCount++;
-      } catch(e) { break; }
+      } catch(e) { console.log('fetch error', e); break; }
     } while (nextCursor && pageCount < MAX_PAGES);
 
-    // Deduplicate by ticker
-    const seenTickers = new Set();
-    const unique = all.filter(m => {
-      if (!m.ticker || seenTickers.has(m.ticker)) return false;
-      seenTickers.add(m.ticker); return true;
-    });
+    // Already processed into clean objects -- no further dedup needed by ticker
+    const unique = all;
 
-    // Score and classify -- all price fields come back as strings, parse as floats
+    // unique[] already has clean {title, yes, volume} -- just classify and score
     const scoredList = [];
     for (const m of unique) {
-      const title = m.title || '';
-      if (!title || title.length < 10) continue;
-
-      // Parse price -- prefer yes_bid, fall back to yes_ask, then last_price
-      const yesBid  = parseFloat(m.yes_bid_dollars  || '0');
-      const yesAsk  = parseFloat(m.yes_ask_dollars  || '0');
-      const lastPx  = parseFloat(m.last_price_dollars || '0');
-      const vol     = parseFloat(m.volume_fp || m.volume_24h_fp || '0');
-
-      // Skip markets with no trading activity at all
-      if (yesBid === 0 && yesAsk === 0 && lastPx === 0) continue;
-      if (vol === 0 && lastPx === 0) continue;
-
-      // Best price estimate: bid if available, else ask complement, else last
-      let yesFrac = yesBid > 0 ? yesBid
-        : yesAsk > 0 ? (1 - yesAsk)
-        : lastPx;
-      const yes = Math.max(1, Math.min(99, Math.round(yesFrac * 100)));
-
-      const cat = classify(title, yes);
-      const sc = barScore({ title, yes, volume: vol });
+      if (!m.title || m.title.length < 10) continue;
+      if (m.yes < 5 || m.yes > 95) continue;
+      const cat = classify(m.title, m.yes);
+      const sc = barScore({ title: m.title, yes: m.yes, volume: m.volume });
       if (cat && sc > -999) {
-        scoredList.push({ title, yes, category: cat, volume: Math.round(vol), score: sc });
+        scoredList.push({ title: m.title, yes: m.yes, category: cat, volume: m.volume, score: sc });
       }
     }
     scoredList.sort((a, b) => b.score - a.score);
