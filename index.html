@@ -345,7 +345,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#2a2a2a;margin-left:8px;">v0.9</span>
+        <span style="color:#2a2a2a;margin-left:8px;">v1.0</span>
       </div>
       </div>
     </div>
@@ -368,6 +368,12 @@ const API = 'https://grain-board.lee-1d3.workers.dev/trade-api/v2';
 const SLIDE_DURATION = 30;
 const CIRCUMFERENCE = 2 * Math.PI * 14;
 
+// Kalshi category names -> our display categories
+const KALSHI_SPORTS_CATS = ['sports', 'basketball', 'football', 'baseball', 'hockey', 'soccer', 'golf', 'tennis', 'mma', 'boxing', 'racing', 'olympics'];
+const KALSHI_POP_CATS    = ['entertainment', 'music', 'movies', 'tv', 'celebrity', 'awards', 'pop culture', 'media'];
+const KALSHI_WILD_CATS   = ['world', 'science and technology', 'climate and weather', 'elections', 'politics', 'economics', 'crypto', 'finance', 'health', 'education', 'law'];
+
+// Keyword overrides -- these bump a market regardless of Kalshi category
 const PHILLY_KEYWORDS = [
   'eagle','philly','philadelphia','sixers','phillies','flyers','union',
   'penn state','villanova','delaware','temple','drexel','birds',
@@ -376,55 +382,50 @@ const PHILLY_KEYWORDS = [
 const SPORT_KEYWORDS = [
   'nfl','nba','mlb','nhl','super bowl','playoff','championship','mvp',
   'draft','stanley cup','world series','finals','ncaa','march madness',
-  'quarterback','touchdown','coach','roster','trade','season','win','title',
-  'league','tournament','cup','bowl','series','score','record'
+  'quarterback','touchdown','season','win','title','league','tournament',
+  'cup','bowl','series','coach','roster','trade'
 ];
 const POP_KEYWORDS = [
-  'oscar','grammy','emmy','taylor','beyonce','movie','film','box office',
-  'netflix','spotify','album','award','celebrity','reality','tv show',
-  'series','artist','song','chart','billboard','host','actor','actress',
-  'singer','streaming','concert','tour','record','debut','release'
+  'oscar','grammy','emmy','taylor swift','beyonce','movie','film','box office',
+  'netflix','spotify','album','award','celebrity','reality show',
+  'artist','song','billboard','actor','actress','singer','concert','tour'
 ];
 const WILDCARD_KEYWORDS = [
-  'elon','kanye','ye','trump','musk','kardashian','nicolas cage','cage',
-  'alien','ufo','bigfoot','shark','tornado','volcano','meteor','earthquake',
-  'robot','ai takeover','time travel','colonize','mars','moon','apocalypse',
-  'resign','arrested','impeach','marry','divorce','baby','pregnant',
-  'comeback','return','retire','fired','quit','breakup','beef',
-  'naked','streaker','crowd surf','punch','fight','banned','suspended',
-  'worst','best ever','goat','cursed','haunted','rigged','conspiracy'
-];
-const WILDCARD_STRUCTURES = [
-  /will .+ ever /i,
-  /will there be a .+ in 20/i,
-  /will .+ apologize/i,
-  /will .+ go to (jail|prison)/i,
-  /will .+ get (married|divorced|arrested)/i,
-  /will anyone .+/i,
-  /how many .+ will/i,
+  'elon','kanye','ye','musk','kardashian','alien','ufo','volcano','meteor',
+  'mars','moon','apocalypse','resign','arrested','impeach','marry','divorce',
+  'retire','fired','quit','pope','president','ai takeover','time travel'
 ];
 const BLOCKLIST = [
-  'cpi','gdp','inflation','yield','treasury','fed funds','basis point',
-  'crude','bitcoin','ethereum','s&p','nasdaq','dow','interest rate',
-  'unemployment','housing','mortgage','eur','usd','gbp','jpy','rate cut',
-  'federal reserve','debt ceiling','tariff','trade war','bond','index'
+  'fed funds rate','basis point','10-year yield','s&p 500 index',
+  'nasdaq index','dow jones','crude oil price','bitcoin price','ethereum price'
 ];
 
 function isWildcard(title) {
   const t = (title || '').toLowerCase();
-  if (WILDCARD_KEYWORDS.some(k => t.includes(k))) return true;
-  if (WILDCARD_STRUCTURES.some(rx => rx.test(title))) return true;
-  return false;
+  return WILDCARD_KEYWORDS.some(k => t.includes(k));
 }
 
-function classify(title, yes) {
+function classifyByKalshiCat(cat) {
+  const c = (cat || '').toLowerCase();
+  if (KALSHI_SPORTS_CATS.some(k => c.includes(k))) return 'sports';
+  if (KALSHI_POP_CATS.some(k => c.includes(k)))    return 'pop';
+  if (KALSHI_WILD_CATS.some(k => c.includes(k)))   return 'wildcard';
+  return null;
+}
+
+function classify(title, yes, kalshiCat) {
   const t = (title || '').toLowerCase();
   if (BLOCKLIST.some(k => t.includes(k))) return null;
-  if (isWildcard(title) && yes >= 5 && yes <= 40) return 'wildcard';
+  // Keyword overrides take priority
   if (PHILLY_KEYWORDS.some(k => t.includes(k))) return 'philly';
-  if (SPORT_KEYWORDS.some(k => t.includes(k))) return 'sports';
-  if (POP_KEYWORDS.some(k => t.includes(k))) return 'pop';
+  if (SPORT_KEYWORDS.some(k => t.includes(k)))  return 'sports';
+  if (POP_KEYWORDS.some(k => t.includes(k)))    return 'pop';
   if (isWildcard(title)) return 'wildcard';
+  // Fall back to Kalshi's own category
+  const catFromKalshi = classifyByKalshiCat(kalshiCat);
+  if (catFromKalshi) return catFromKalshi;
+  // Accept anything that reads as a clear question -- bar guests can engage with any topic
+  if (/^(will|who|what|when|which|how many|does|is |are |can |has )/i.test(title)) return 'wildcard';
   return null;
 }
 
@@ -600,7 +601,7 @@ async function fetchMarkets() {
     for (const m of unique) {
       if (!m.title || m.title.length < 10) continue;
       if (m.yes < 5 || m.yes > 95) continue;
-      const cat = classify(m.title, m.yes);
+      const cat = classify(m.title, m.yes, m.category);
       const sc = barScore({ title: m.title, yes: m.yes, volume: m.volume });
       if (cat && sc > -999) {
         scoredList.push({ title: m.title, yes: m.yes, category: cat, volume: m.volume, score: sc });
@@ -635,7 +636,7 @@ async function fetchMarkets() {
         if (/^will /i.test(t2) || /^(who|what|when|which|how many)/i.test(t2)) {
           const yesFrac2 = m.yes_bid_dollars ?? m.yes_ask_dollars ?? m.last_price_dollars ?? 0.5;
           const yes2 = Math.round(yesFrac2 * 100);
-          const cat = classify(t2, yes2) || 'sports';
+          const cat = classify(t2, yes2, m.category) || 'wildcard';
           extra.push({ title: t2, yes: yes2, category: cat, volume: Math.round(m.dollar_volume ?? m.volume_fp ?? 0), score: 10 });
           extraSeen.add(mt);
         }
