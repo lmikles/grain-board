@@ -415,23 +415,40 @@ function getFallback() {
 async function fetchMarkets() {
   try {
     let all = [];
-    const urls = [
-      API + '/markets?status=open&limit=100&category=Sports',
-      API + '/markets?status=open&limit=100&category=Entertainment',
+
+    // Pull large batches with cursor pagination for depth
+    const baseUrls = [
+      API + '/markets?status=open&limit=200&category=Sports',
+      API + '/markets?status=open&limit=200&category=Entertainment',
       API + '/markets?status=open&limit=200',
     ];
-    for (const url of urls) {
+
+    for (const url of baseUrls) {
       try {
         const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
         if (!r.ok) continue;
         const data = await r.json();
         if (data.markets) all = all.concat(data.markets);
+
+        // Follow cursor for up to 3 more pages per endpoint
+        let cursor = data.cursor;
+        let extra = 0;
+        while (cursor && extra < 3) {
+          const r2 = await fetch(url + '&cursor=' + encodeURIComponent(cursor), { headers: { 'Accept': 'application/json' } });
+          if (!r2.ok) break;
+          const d2 = await r2.json();
+          if (d2.markets) all = all.concat(d2.markets);
+          cursor = d2.cursor;
+          extra++;
+        }
       } catch(e) {}
     }
 
+    // Deduplicate by ticker
     const seen = new Set();
     const unique = all.filter(m => { if (seen.has(m.ticker)) return false; seen.add(m.ticker); return true; });
 
+    // Score and classify everything
     let scored = unique
       .map(m => {
         const yes = Math.round(m.yes_bid || m.last_price || 50);
@@ -446,43 +463,65 @@ async function fetchMarkets() {
       .filter(m => m.category && m.score > -999)
       .sort((a, b) => b.score - a.score);
 
+    // Deduplicate by title
     const deduped = [];
     const seen2 = new Set();
     for (const m of scored) {
       if (!seen2.has(m.title)) { deduped.push(m); seen2.add(m.title); }
     }
 
-    // Pull wildcards and regulars separately, then interleave
+    // Separate into pools
+    const philly    = deduped.filter(m => m.category === 'philly');
     const wildcards = deduped.filter(m => m.category === 'wildcard');
-    const regulars  = deduped.filter(m => m.category !== 'wildcard');
+    const regulars  = deduped.filter(m => m.category !== 'wildcard' && m.category !== 'philly');
 
-    // Build pages: sprinkle wildcards naturally based on score rank
-    // Merge back together respecting overall score order, wildcards capped at 2 per page
-    const merged = [];
+    // Merge wildcards + regulars by score into one ordered non-philly pool
+    const nonPhilly = [];
     let wi = 0, ri = 0;
-    while (merged.length < 24 && (wi < wildcards.length || ri < regulars.length)) {
+    while (wi < wildcards.length || ri < regulars.length) {
       const wScore = wi < wildcards.length ? wildcards[wi].score : -Infinity;
       const rScore = ri < regulars.length  ? regulars[ri].score  : -Infinity;
-      if (wScore >= rScore) { merged.push(wildcards[wi++]); }
-      else                  { merged.push(regulars[ri++]); }
+      if (wScore >= rScore) { nonPhilly.push(wildcards[wi++]); }
+      else                  { nonPhilly.push(regulars[ri++]); }
     }
 
-    // Enforce max 2 wildcards per page-of-4
-    const paged = [];
-    let buf = [], wCount = 0;
-    for (const m of merged) {
-      if (m.category === 'wildcard') {
-        if (wCount >= 2) continue;
-        wCount++;
+    // Target 60 slides = 30 minutes at 30s each
+    // Philly cards recycle; everything else appears once per cycle
+    const TARGET_SLIDES = 60;
+    const builtPages = [];
+    let npIdx = 0;
+    let phillyIdx = 0;
+
+    while (builtPages.length < TARGET_SLIDES && npIdx < nonPhilly.length) {
+      const slide = [];
+      let wildcardCount = 0;
+
+      // 1 Philly card per slide (cycles through, repeats when exhausted)
+      if (philly.length > 0) {
+        slide.push(philly[phillyIdx % philly.length]);
+        phillyIdx++;
       }
-      buf.push(m);
-      if (buf.length === 4) { paged.push(buf); buf = []; wCount = 0; }
+
+      // Fill remaining 3 slots from nonPhilly (each card appears once only)
+      while (slide.length < 4 && npIdx < nonPhilly.length) {
+        const m = nonPhilly[npIdx++];
+        if (m.category === 'wildcard' && wildcardCount >= 2) continue;
+        if (m.category === 'wildcard') wildcardCount++;
+        slide.push(m);
+      }
+
+      if (slide.length < 4) break;
+
+      // Shuffle so Philly card isn't always top-left
+      for (let i = slide.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [slide[i], slide[j]] = [slide[j], slide[i]];
+      }
+
+      builtPages.push(slide);
     }
 
-    let top = paged;
-    if (top.length === 0) top = [getFallback().slice(0, 4)];
-
-    pages = top;
+    pages = builtPages.length > 0 ? builtPages : [getFallback().slice(0, 4)];
     render();
     if (timerInterval === null) startTimer();
   } catch(e) {
