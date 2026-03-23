@@ -549,13 +549,22 @@ async function fetchMarkets() {
               type: 'binary'
             });
           } else {
+            // Multi-outcome -- log first one to see market field names
+            if (all.filter(a => a.type === 'multi').length === 0) {
+              console.log('FIRST MULTI-OUTCOME EVENT:', evTitle);
+              console.log('MARKETS[0] keys:', Object.keys(markets[0]).join(', '));
+              markets.slice(0, 3).forEach((mk, i) => {
+                console.log('market ' + i + ':', JSON.stringify(mk));
+              });
+            }
             // Multi-outcome -- score each outcome by its yes price (probability)
             const outcomes = markets.map(mk => {
               const bid  = parseFloat(mk.yes_bid_dollars  || '0');
               const ask  = parseFloat(mk.yes_ask_dollars  || '0');
               const last = parseFloat(mk.last_price_dollars || '0');
               const pct = Math.round((bid > 0 ? bid : ask > 0 ? (1 - ask) : last) * 100);
-              const label = mk.subtitle || mk.title || mk.ticker || '';
+              // Try every possible label field
+              const label = mk.subtitle || mk.short_name || mk.title || mk.custom_strike || mk.ticker || '';
               return { label, pct, vol: parseFloat(mk.volume_fp || '0') };
             }).filter(o => o.label && o.pct > 0)
               .sort((a, b) => b.pct - a.pct)
