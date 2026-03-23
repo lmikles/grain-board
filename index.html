@@ -60,9 +60,35 @@
     }
 
     .header-sub {
+      display: flex;
+      align-items: center;
+      gap: 7px;
       font-size: 11px;
-      color: #363636;
-      letter-spacing: 0.04em;
+      color: #444;
+      letter-spacing: 0.03em;
+    }
+
+    .kalshi-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #0d1f18;
+      border: 0.5px solid #1e3d2e;
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #4DE4B2;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+
+    .kalshi-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #4DE4B2;
+      animation: pulse 2s infinite;
     }
 
     .header-right {
@@ -197,7 +223,13 @@
 
     .bar-fill { height: 100%; border-radius: 2px; }
 
-    .vol-line { font-size: 11px; color: #2e2e2e; }
+    .vol-line {
+      font-size: 13px;
+      font-weight: 500;
+      color: #7a6a3a;
+      margin-top: 6px;
+      letter-spacing: 0.01em;
+    }
 
     /* Grain green -- Philly / Delaware */
     .grain-color  { color: #9ab59e; }
@@ -256,11 +288,17 @@
       <div class="header-divider"></div>
       <div class="header-text">
         <div class="header-title">Conversation Starters</div>
-        <div class="header-sub">Powered by Kalshi prediction markets &mdash; updated live</div>
+      <div class="header-sub">
+        Live from
+        <span class="kalshi-badge">
+          <span class="kalshi-dot"></span>
+          Kalshi
+        </span>
+        prediction markets
+      </div>
       </div>
     </div>
     <div class="header-right">
-      <div class="live-dot"><span class="dot"></span> Live</div>
       <svg id="timer-ring" viewBox="0 0 36 36">
         <circle class="track" cx="18" cy="18" r="14"/>
         <circle class="progress" id="ring-fill" cx="18" cy="18" r="14"
@@ -469,9 +507,10 @@ function catLabel(cat) {
 }
 
 function formatVol(v) {
-  if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M traded';
-  if (v >= 1000) return '$' + Math.round(v / 1000) + 'K traded';
-  return '';
+  if (!v || v < 500) return '';
+  if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M bet on this';
+  if (v >= 1000) return '$' + Math.round(v / 1000) + 'K bet on this';
+  return '$' + v + ' bet on this';
 }
 
 function render() {
