@@ -345,7 +345,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.3</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.4</span>
       </div>
       </div>
     </div>
@@ -594,7 +594,15 @@ async function fetchMarkets() {
       const cat = classify(m.title, m.yes, m.category);
       const sc = barScore({ title: m.title, yes: m.yes, volume: m.volume });
       if (cat && sc > -999) {
-        scoredList.push({ title: m.title, yes: m.yes, category: cat, volume: m.volume, score: sc });
+        scoredList.push({
+          title: m.title,
+          yes: m.yes,
+          category: cat,
+          volume: m.volume,
+          score: sc,
+          type: m.type || 'binary',
+          outcomes: m.outcomes || null
+        });
       }
     }
     scoredList.sort((a, b) => b.score - a.score);
@@ -833,6 +841,9 @@ function fitText() {
 fetchMarkets();
 setInterval(fetchMarkets, 5 * 60 * 1000);
 window.addEventListener('resize', function() { setTimeout(fitText, 100); });
+
+// Full page reload every 60 minutes -- picks up new deployments automatically
+setTimeout(function() { location.reload(); }, 60 * 60 * 1000);
 </script>
 </body>
 </html>
