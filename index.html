@@ -226,50 +226,45 @@
     .outcomes-block {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
     }
 
     .outcome-row {
+      position: relative;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #1e1e1e;
+      padding: 10px 14px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
     }
 
+    .outcome-bg {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      border-radius: 6px;
+      opacity: 0.18;
+      pointer-events: none;
+    }
+
     .outcome-label {
-      font-size: 14px;
-      color: #b0aba2;
+      font-size: 20px;
+      font-weight: 400;
+      color: #e8e4dc;
       flex: 1;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    .outcome-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
+      position: relative;
     }
 
     .outcome-pct {
-      font-size: 18px;
+      font-size: 24px;
       font-weight: 500;
-      min-width: 44px;
-      text-align: right;
-    }
-
-    .outcome-bar-track {
-      width: 60px;
-      height: 3px;
-      background: #202020;
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .outcome-bar-fill {
-      height: 100%;
-      border-radius: 2px;
+      flex-shrink: 0;
+      position: relative;
     }
 
     .vol-line {
@@ -345,7 +340,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.4</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.5</span>
       </div>
       </div>
     </div>
@@ -757,23 +752,27 @@ function render() {
     const isMulti = m.type === 'multi' && m.outcomes && m.outcomes.length >= 2;
 
     if (isMulti) {
-      const rows = m.outcomes.map(o =>
-        '<div class="outcome-row">' +
-          '<div class="outcome-label">' + o.label + '</div>' +
-          '<div class="outcome-right">' +
-            '<span class="outcome-pct ' + c + '-color">' + o.pct + '%</span>' +
-            '<div class="outcome-bar-track"><div class="outcome-bar-fill ' + c + '-bar" style="width:' + Math.min(100, o.pct * 2) + '%"></div></div>' +
-          '</div>' +
-        '</div>'
-      ).join('');
+      // Scale bars relative to the top outcome
+      const maxPct = m.outcomes[0].pct || 1;
+      const rows = m.outcomes.map(o => {
+        const barW = Math.round((o.pct / maxPct) * 100);
+        return '<div class="outcome-row">' +
+          '<div class="outcome-bg ' + c + '-bar" style="width:' + barW + '%"></div>' +
+          '<span class="outcome-label">' + o.label + '</span>' +
+          '<span class="outcome-pct ' + c + '-color">' + o.pct + '%</span>' +
+        '</div>';
+      }).join('');
       card.innerHTML =
         '<div>' +
           '<span class="cat-badge ' + c + '-badge">' + catLabel(m.category) + '</span>' +
-          '<div class="card-question" style="margin-bottom:10px;">' + m.title + '</div>' +
+          '<div class="card-question" style="margin-bottom:14px;font-size:22px;">' + m.title + '</div>' +
         '</div>' +
         '<div class="outcomes-block">' + rows + '</div>' +
-        (vol ? '<div class="vol-line" style="margin-top:8px;">' + vol + '</div>' : '');
+        (vol ? '<div class="vol-line" style="margin-top:10px;">' + vol + '</div>' : '');
     } else {
+      const isWillQ = /^will /i.test(m.title);
+      const yesLabel = isWillQ ? 'YES' : 'yes';
+      const noLabel  = isWillQ ? 'NO'  : 'no';
       card.innerHTML =
         '<div>' +
           '<span class="cat-badge ' + c + '-badge">' + catLabel(m.category) + '</span>' +
@@ -781,8 +780,11 @@ function render() {
         '</div>' +
         '<div>' +
           '<div class="odds-row">' +
-            '<div><span class="yes-pct ' + c + '-color">' + m.yes + '%</span><span class="yes-label">yes</span></div>' +
-            '<span class="no-label">' + (100 - m.yes) + '% no</span>' +
+            '<div>' +
+              '<span class="yes-pct ' + c + '-color">' + m.yes + '%</span>' +
+              '<span class="yes-label" style="' + (isWillQ ? 'font-size:15px;font-weight:500;color:#9ab59e;' : '') + '">' + yesLabel + '</span>' +
+            '</div>' +
+            '<span class="no-label" style="' + (isWillQ ? 'font-size:15px;font-weight:500;color:#555;' : '') + '">' + (100 - m.yes) + '% ' + noLabel + '</span>' +
           '</div>' +
           '<div class="bar-track"><div class="bar-fill ' + c + '-bar" style="width:' + m.yes + '%"></div></div>' +
           (vol ? '<div class="vol-line">' + vol + '</div>' : '') +
