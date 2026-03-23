@@ -503,7 +503,18 @@ async function fetchMarkets() {
         }
 
         if (pageCount === 0) {
-          console.log('Sample event:', JSON.stringify((data.events||[])[0], null, 2));
+          const evs = data.events || [];
+          console.log('Total events page 1:', evs.length);
+          evs.slice(0, 5).forEach((ev, i) => {
+            const mk = (ev.markets || [])[0] || {};
+            console.log('EVENT ' + i + ':', ev.title || ev.event_ticker,
+              '| cat:', ev.category,
+              '| markets:', (ev.markets||[]).length,
+              '| yes_bid:', mk.yes_bid_dollars,
+              '| last_price:', mk.last_price_dollars,
+              '| vol:', mk.volume_fp);
+          });
+          console.log('FULL first event:', JSON.stringify(evs[0], null, 2));
         }
         nextCursor = data.cursor || null;
         pageCount++;
