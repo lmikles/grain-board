@@ -345,7 +345,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.2</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.3</span>
       </div>
       </div>
     </div>
@@ -526,7 +526,9 @@ async function fetchMarkets() {
             const bid  = parseFloat(mk.yes_bid_dollars  || '0');
             const ask  = parseFloat(mk.yes_ask_dollars  || '0');
             const last = parseFloat(mk.last_price_dollars || '0');
-            return bid > 0 || ask > 0 || last > 0;
+            const vol  = parseFloat(mk.volume_fp || '0');
+            // Keep if any price signal OR has trading volume
+            return bid > 0 || ask > 0 || last > 0 || vol > 0;
           });
 
           if (markets.length === 0) continue;
@@ -550,10 +552,6 @@ async function fetchMarkets() {
             });
           } else {
             // Multi-outcome -- score each outcome by its yes price (probability)
-            if (all.filter(a=>a.type==='multi').length === 0) {
-              console.log('MULTI sample:', evTitle, '| market[0] keys:', Object.keys(markets[0]).join(','));
-              console.log('  yes_sub_title:', markets[0].yes_sub_title, '| no_sub_title:', markets[0].no_sub_title, '| subtitle:', markets[0].subtitle, '| title:', markets[0].title);
-            }
             const outcomes = markets.map(mk => {
               const bid  = parseFloat(mk.yes_bid_dollars  || '0');
               const ask  = parseFloat(mk.yes_ask_dollars  || '0');
@@ -562,7 +560,7 @@ async function fetchMarkets() {
               // Try every possible label field
               const label = mk.yes_sub_title || mk.no_sub_title || mk.subtitle || mk.short_name || mk.custom_strike || '';
               return { label, pct, vol: parseFloat(mk.volume_fp || '0') };
-            }).filter(o => o.label && o.pct > 0)
+            }).filter(o => o.label && o.label.length > 0)
               .sort((a, b) => b.pct - a.pct)
               .slice(0, 3);
 
