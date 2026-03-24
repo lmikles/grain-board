@@ -355,7 +355,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.4</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.5</span>
       </div>
       </div>
     </div>
@@ -1080,11 +1080,53 @@ function fitText() {
 }
 
 fetchMarkets();
-setInterval(fetchMarkets, 5 * 60 * 1000);
 window.addEventListener('resize', function() { setTimeout(fitText, 100); });
 
-// Full page reload every 60 minutes -- picks up new deployments automatically
-setTimeout(function() { location.reload(); }, 60 * 60 * 1000);
+// --- Robust refresh for TV browsers ---
+// Track when we last fetched so we can detect stale data
+var lastFetch = Date.now();
+var lastReload = Date.now();
+
+// Polling loop -- runs every 30 seconds and decides what action to take
+// TV browsers throttle setInterval but a tight loop is harder to suppress
+setInterval(function() {
+  var now = Date.now();
+  var sinceLastFetch  = now - lastFetch;
+  var sinceLastReload = now - lastReload;
+
+  // Full page reload every 60 minutes to pick up new deployments
+  if (sinceLastReload > 60 * 60 * 1000) {
+    location.reload();
+    return;
+  }
+
+  // Refresh market data every 5 minutes
+  if (sinceLastFetch > 5 * 60 * 1000) {
+    fetchMarkets();
+    lastFetch = now;
+  }
+}, 30 * 1000);
+
+// Visibility API -- re-fetch immediately when TV wakes up or tab becomes active
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') {
+    var now = Date.now();
+    // If we've been hidden for more than 10 minutes, just reload the page
+    if (now - lastFetch > 10 * 60 * 1000) {
+      location.reload();
+    } else if (now - lastFetch > 2 * 60 * 1000) {
+      fetchMarkets();
+      lastFetch = now;
+    }
+  }
+});
+
+// Wrap fetchMarkets to update lastFetch timestamp
+var _origFetch = fetchMarkets;
+fetchMarkets = function() {
+  lastFetch = Date.now();
+  return _origFetch();
+};
 </script>
 </body>
 </html>
