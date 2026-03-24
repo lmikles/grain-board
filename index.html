@@ -355,7 +355,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.5</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.6</span>
       </div>
       </div>
     </div>
@@ -437,11 +437,20 @@ const WILDCARD_KEYWORDS = [
 const BLOCKLIST = [
   'fed funds rate','basis point','10-year yield','s&p 500 index',
   'nasdaq index','dow jones','crude oil price','bitcoin price','ethereum price',
+  // Political races -- hard kill
   'house race','senate race','congressional','house district','senate district',
+  'house seat','senate seat','flip the seat','hold the seat','win the seat',
+  'house of representatives','retain the seat','competitive seat',
   'IA-','TX-','CA-','NY-','FL-','OH-','PA-','GA-','AZ-','WI-','MI-','NC-',
+  'AL-','AR-','CO-','CT-','DE-','HI-','ID-','IL-','IN-','KS-','KY-','LA-',
+  'MA-','MD-','ME-','MN-','MO-','MS-','MT-','NE-','NV-','NH-','NJ-','NM-',
+  'ND-','OK-','OR-','RI-','SC-','SD-','TN-','UT-','VA-','VT-','WA-','WV-','WY-',
   'district court','supreme court justice','ballot measure','referendum',
   'electoral college','popular vote','majority leader','speaker of the house',
-  'prime minister','chancellor','parliament','gubernatorial'
+  'minority leader','senate majority','house majority','senate minority',
+  'prime minister','chancellor','parliament','gubernatorial',
+  'congressional district','legislative district','special election result',
+  'polling average','polling lead','favorability','job approval'
 ];
 
 // Keywords that flag a market as too political for bar fun
@@ -454,7 +463,10 @@ const POLITICAL_PENALTY_KEYWORDS = [
   'georgia governor','georgia senate','georgia runoff','georgia election',
   'florida governor','texas governor','ohio governor','michigan governor',
   'attorney general','secretary of state','state legislature',
-  'special election','midterm','runoff election'
+  'special election','midterm','runoff election',
+  'house seat','senate seat','flip the','hold the seat','win the seat',
+  'district race','competitive district','safe seat','swing district',
+  'toss up','lean democrat','lean republican','solid democrat','solid republican'
 ];
 
 function isWildcard(title) {
