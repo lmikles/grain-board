@@ -291,6 +291,11 @@
     .sportsprop-badge { background: #0a2420; color: #4ec9b0; }
     .sportsprop-bar   { background: #4ec9b0; }
 
+    /* Sports events -- warm orange */
+    .sportsevent-color { color: #d4845a; }
+    .sportsevent-badge { background: #2e1408; color: #e09a72; }
+    .sportsevent-bar   { background: #d4845a; }
+
     .sport-color  { color: #6b9fc5; }
     .sport-badge  { background: #0e2233; color: #8ab8d8; }
     .sport-bar    { background: #6b9fc5; }
@@ -350,7 +355,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.1</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.3</span>
       </div>
       </div>
     </div>
@@ -386,8 +391,33 @@ const KALSHI_WILD_CATS   = ['world', 'science and technology', 'climate and weat
 const PHILLY_KEYWORDS = [
   'eagle','philly','philadelphia','sixers','phillies','flyers','union',
   'penn state','villanova','delaware','temple','drexel','birds',
-  'hurts','sirianni','dover','wilmington','newark','blue hens'
+  'hurts','sirianni','dover','wilmington','newark','blue hens',
+  // Local weather -- cities in the Philly/Delaware/South Jersey region
+  'philadelphia temperature','philly temperature','wilmington temperature',
+  'newark temperature','atlantic city','trenton','camden',
+  // Kalshi weather market format is usually "city" in the title
+  'phl','dca','bwi',
 ];
+
+// Weather keywords that get a Philly boost when combined with a local city
+const WEATHER_KEYWORDS = [
+  'temperature','snow','rain','storm','hurricane','tornado','flood',
+  'heat wave','cold snap','frost','blizzard','ice','freeze',
+  'inches of snow','degrees','high temp','low temp'
+];
+
+function isLocalWeather(title) {
+  const t = (title || '').toLowerCase();
+  const hasWeather = WEATHER_KEYWORDS.some(k => t.includes(k));
+  if (!hasWeather) return false;
+  // Check for Philly/Delaware region cities
+  const localCities = [
+    'philadelphia','philly','wilmington','delaware','newark','dover',
+    'atlantic city','trenton','camden','cherry hill','south jersey',
+    'pennsylvania','new jersey','maryland','baltimore','dc','washington'
+  ];
+  return localCities.some(k => t.includes(k));
+}
 const SPORT_KEYWORDS = [
   'nfl','nba','mlb','nhl','super bowl','playoff','championship','mvp',
   'draft','stanley cup','world series','finals','ncaa','march madness',
@@ -457,6 +487,49 @@ const SPORT_PROP_PATTERNS = [
   /over\/under|over .+ \d+|under .+ \d+/i,
 ];
 
+// Sports event keywords -- game/tournament/season level bets for the bar sports
+const FOOTBALL_KEYWORDS = [
+  'nfl','super bowl','playoffs','wild card','divisional','conference championship',
+  'ncaa football','college football','cfp','bowl game','heisman','quarterback',
+  'touchdown','field goal','offensive line','draft pick'
+];
+const BASEBALL_KEYWORDS = [
+  'mlb','world series','nlcs','alcs','nlds','alds','baseball',
+  'home run','batting average','strikeout','no-hitter','perfect game',
+  'postseason','pennant','slugger','pitcher','bullpen'
+];
+const HOCKEY_KEYWORDS = [
+  'nhl','stanley cup','playoffs','hat trick','shutout','overtime',
+  'hockey','goalie','power play','penalty shot','zamboni'
+];
+const GOLF_KEYWORDS = [
+  'masters','pga','us open','british open','the open','ryder cup',
+  'golf','birdie','eagle','hole in one','major','tour','leaderboard',
+  'playoff','stroke','fairway','tiger','mcilroy','scheffler'
+];
+const SOCCER_KEYWORDS = [
+  'mls','premier league','champions league','world cup','euro','copa',
+  'soccer','football club','goal','penalty kick','clean sheet',
+  'hat trick','relegation','transfer','pitch','fixture'
+];
+const COLLEGE_FOOTBALL_KEYWORDS = [
+  'cfp','college football','ncaa football','bowl game','heisman',
+  'sec','big ten','acc','pac-12','big 12','notre dame','alabama',
+  'ohio state','michigan','georgia','clemson','penn state','rivalry'
+];
+
+function isSportsEvent(title) {
+  const t = (title || '').toLowerCase();
+  return (
+    FOOTBALL_KEYWORDS.some(k => t.includes(k)) ||
+    BASEBALL_KEYWORDS.some(k => t.includes(k)) ||
+    HOCKEY_KEYWORDS.some(k => t.includes(k))   ||
+    GOLF_KEYWORDS.some(k => t.includes(k))     ||
+    SOCCER_KEYWORDS.some(k => t.includes(k))   ||
+    COLLEGE_FOOTBALL_KEYWORDS.some(k => t.includes(k))
+  );
+}
+
 function isSportsProp(title) {
   return SPORT_PROP_PATTERNS.some(rx => rx.test(title || ''));
 }
@@ -466,12 +539,16 @@ function classify(title, yes, kalshiCat) {
   if (BLOCKLIST.some(k => t.includes(k))) return null;
   if (POLITICAL_PENALTY_KEYWORDS.some(k => t.includes(k))) return null;
 
-  // Philly always first
+  // Philly always first -- includes local weather
   if (PHILLY_KEYWORDS.some(k => t.includes(k))) return 'philly';
+  if (isLocalWeather(title)) return 'philly';
 
-  // Sports prop before general sports
-  if (isSportsProp(title) && SPORT_KEYWORDS.some(k => t.includes(k))) return 'sportsprop';
+  // Sports prop (player-level stat/milestone bets) -- highest priority sports
+  if (isSportsProp(title) && (SPORT_KEYWORDS.some(k => t.includes(k)) || isSportsEvent(title))) return 'sportsprop';
   if (isSportsProp(title)) return 'sportsprop';
+
+  // Sports events (game/tournament/season level for our 6 sports)
+  if (isSportsEvent(title)) return 'sportsevent';
 
   // Pop culture
   if (POP_KEYWORDS.some(k => t.includes(k))) return 'pop';
@@ -542,8 +619,10 @@ function barScore(market) {
 
   // Big boosts for fun categories -- sportsprop is king
   if (PHILLY_KEYWORDS.some(k => t.includes(k)))  score += 60;  // local love
-  if (isProp && SPORT_KEYWORDS.some(k => t.includes(k))) score += 55; // sports props
+  if (isLocalWeather(market.title))               score += 60;  // local weather = local love
+  if (isProp && (SPORT_KEYWORDS.some(k => t.includes(k)) || isSportsEvent(market.title))) score += 55; // sports props
   else if (isProp)                                score += 45;  // other props
+  if (isSportsEvent(market.title))                score += 45;  // game/tournament bets
   if (POP_KEYWORDS.some(k => t.includes(k)))      score += 40;  // pop culture
   if (SPORT_KEYWORDS.some(k => t.includes(k)))    score += 30;  // general sports
   if (isWildcard(market.title))                   score += 20;  // fun weird stuff
@@ -621,6 +700,8 @@ function getFallback() {
     { title: 'Will Kanye West release an album in 2026?', yes: 34, category: 'wildcard', volume: 155000 },
     { title: 'Will there be a sequel to a movie that definitely should not have one?', yes: 77, category: 'wildcard', volume: 88000 },
     { title: 'Will it snow in Philadelphia on Christmas Day?', yes: 22, category: 'philly', volume: 45000 },
+    { title: 'Will Philadelphia hit 90 degrees this summer?', yes: 78, category: 'philly', volume: 31000 },
+    { title: 'Will Wilmington see a white Christmas this year?', yes: 18, category: 'philly', volume: 22000 },
     { title: 'Will a player score 70+ points in an NBA game this season?', yes: 18, category: 'sports', volume: 62000 },
     { title: 'Will Taylor Swift get engaged in 2026?', yes: 34, category: 'pop', volume: 88000 },
     { title: 'Will the Eagles go undefeated in the regular season?', yes: 8, category: 'philly', volume: 71000 },
@@ -773,6 +854,13 @@ async function fetchMarkets() {
     const phillyPool   = pool.filter(m => m.category === 'philly');
     const wildcardPool = pool.filter(m => m.category === 'wildcard');
     const regularPool  = pool.filter(m => m.category !== 'wildcard' && m.category !== 'philly');
+    // Log for debugging
+    console.log('Pool:', pool.length, '| philly:', phillyPool.length,
+      '| sportsprop:', pool.filter(m=>m.category==='sportsprop').length,
+      '| sportsevent:', pool.filter(m=>m.category==='sportsevent').length,
+      '| pop:', pool.filter(m=>m.category==='pop').length,
+      '| sports:', pool.filter(m=>m.category==='sports').length,
+      '| wild:', wildcardPool.length);
     // Log category breakdown for debugging
     const catCounts = {};
     pool.forEach(m => { catCounts[m.category] = (catCounts[m.category]||0)+1; });
@@ -841,18 +929,20 @@ async function fetchMarkets() {
 }
 
 function cc(cat) {
-  if (cat === 'philly')     return 'grain';
-  if (cat === 'sportsprop') return 'sportsprop';
-  if (cat === 'sports')     return 'sport';
-  if (cat === 'wildcard')   return 'wild';
+  if (cat === 'philly')      return 'grain';
+  if (cat === 'sportsprop')  return 'sportsprop';
+  if (cat === 'sportsevent') return 'sportsevent';
+  if (cat === 'sports')      return 'sport';
+  if (cat === 'wildcard')    return 'wild';
   return 'pop';
 }
 
 function catLabel(cat) {
-  if (cat === 'philly')     return 'Philly / Delaware';
-  if (cat === 'sportsprop') return 'Sports prop';
-  if (cat === 'sports')     return 'Sports';
-  if (cat === 'wildcard')   return 'Wild card';
+  if (cat === 'philly')      return 'Philly / Delaware';
+  if (cat === 'sportsprop')  return 'Sports prop';
+  if (cat === 'sportsevent') return 'Game bet';
+  if (cat === 'sports')      return 'Sports';
+  if (cat === 'wildcard')    return 'Wild card';
   return 'Pop Culture';
 }
 
