@@ -205,13 +205,15 @@
     }
 
     .yes-label {
-      font-size: 12px;
+      font-size: 36px;
+      font-weight: 500;
       color: #444;
-      margin-left: 5px;
+      margin-left: 8px;
     }
 
     .no-label {
-      font-size: 15px;
+      font-size: 28px;
+      font-weight: 400;
       color: #383838;
     }
 
@@ -343,7 +345,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.7</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.8</span>
       </div>
       </div>
     </div>
@@ -789,9 +791,9 @@ function render() {
           '<div class="odds-row">' +
             '<div>' +
               '<span class="yes-pct ' + c + '-color">' + m.yes + '%</span>' +
-              '<span class="yes-label" style="' + (isWillQ ? 'font-size:15px;font-weight:500;color:#9ab59e;' : '') + '">' + yesLabel + '</span>' +
+              '<span class="yes-label" style="' + (isWillQ ? 'color:#9ab59e;' : '') + '">' + yesLabel + '</span>' +
             '</div>' +
-            '<span class="no-label" style="' + (isWillQ ? 'font-size:15px;font-weight:500;color:#555;' : '') + '">' + (100 - m.yes) + '% ' + noLabel + '</span>' +
+            '<span class="no-label" style="' + (isWillQ ? 'color:#555;' : '') + '">' + (100 - m.yes) + '% ' + noLabel + '</span>' +
           '</div>' +
           '<div class="bar-track"><div class="bar-fill ' + c + '-bar" style="width:' + m.yes + '%"></div></div>' +
           (vol ? '<div class="vol-line">' + vol + '</div>' : '') +
