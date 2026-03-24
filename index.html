@@ -355,7 +355,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.3</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.4</span>
       </div>
       </div>
     </div>
@@ -449,7 +449,12 @@ const POLITICAL_PENALTY_KEYWORDS = [
   'house race','senate race','which party will win','party win','party control',
   'election','electoral','caucus','primary','ballot','polling','poll average',
   'approval rating','disapproval','filibuster','legislation','congress',
-  'republican party','democratic party','gop','dnc','rnc'
+  'republican party','democratic party','gop','dnc','rnc',
+  // State-level political races that bleed through
+  'georgia governor','georgia senate','georgia runoff','georgia election',
+  'florida governor','texas governor','ohio governor','michigan governor',
+  'attorney general','secretary of state','state legislature',
+  'special election','midterm','runoff election'
 ];
 
 function isWildcard(title) {
@@ -514,20 +519,22 @@ const SOCCER_KEYWORDS = [
 ];
 const COLLEGE_FOOTBALL_KEYWORDS = [
   'cfp','college football','ncaa football','bowl game','heisman',
-  'sec','big ten','acc','pac-12','big 12','notre dame','alabama',
-  'ohio state','michigan','georgia','clemson','penn state','rivalry'
+  'sec','big ten','acc','pac-12','big 12','notre dame','alabama bulldogs',
+  'ohio state','michigan wolverines','georgia bulldogs','clemson tigers',
+  'penn state nittany','rivalry game','bowl game result','cfp semifinal'
 ];
 
 function isSportsEvent(title) {
   const t = (title || '').toLowerCase();
-  return (
-    FOOTBALL_KEYWORDS.some(k => t.includes(k)) ||
+  // Must also look like a sports question, not a political/geographic one
+  const hasSportsVerb = /(win|beat|defeat|score|advance|qualify|finish|place|make|title|champion|playoff|clinch|sweep)/i.test(title);
+  const hasLeague = FOOTBALL_KEYWORDS.some(k => t.includes(k)) ||
     BASEBALL_KEYWORDS.some(k => t.includes(k)) ||
     HOCKEY_KEYWORDS.some(k => t.includes(k))   ||
     GOLF_KEYWORDS.some(k => t.includes(k))     ||
     SOCCER_KEYWORDS.some(k => t.includes(k))   ||
-    COLLEGE_FOOTBALL_KEYWORDS.some(k => t.includes(k))
-  );
+    COLLEGE_FOOTBALL_KEYWORDS.some(k => t.includes(k));
+  return hasLeague && (hasSportsVerb || /^will .+ win/i.test(title) || /^who will win/i.test(title));
 }
 
 function isSportsProp(title) {
