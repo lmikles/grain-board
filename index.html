@@ -343,7 +343,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.6</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.7</span>
       </div>
       </div>
     </div>
@@ -564,7 +564,7 @@ async function fetchMarkets() {
               return { label, pct, vol: parseFloat(mk.volume_fp || '0') };
             }).filter(o => o.label && o.label.length > 0)
               .sort((a, b) => b.pct - a.pct)
-              .slice(0, 3);
+              .slice(0, 2);
 
             if (outcomes.length >= 2) {
               all.push({
@@ -742,7 +742,7 @@ function render() {
   const footer = document.getElementById('footer');
   footer.style.display = 'flex';
   footer.innerHTML =
-    '<span style="font-size:10px;color:#2a2a2a;position:absolute;left:40px;">' + statusMsg + '</span>' +
+    '<span style="font-size:10px;color:#1a1a1a;position:absolute;left:40px;user-select:none;">' + statusMsg + '</span>' +
     pages.map((_, i) =>
       '<div class="page-dot ' + (i === currentPage ? 'active' : '') + '"></div>'
     ).join('');
@@ -772,7 +772,7 @@ function render() {
       card.innerHTML =
         '<div>' +
           '<span class="cat-badge ' + c + '-badge">' + catLabel(m.category) + '</span>' +
-          '<div class="card-question" style="margin-bottom:14px;font-size:22px;">' + m.title + '</div>' +
+          '<div class="card-question" style="margin-bottom:14px;">' + m.title + '</div>' +
         '</div>' +
         '<div class="outcomes-block">' + rows + '</div>' +
         (vol ? '<div class="vol-line" style="margin-top:10px;">' + vol + '</div>' : '');
@@ -831,19 +831,23 @@ function fitText() {
   cards.forEach(function(card) {
     const qEl = card.querySelector('.card-question');
     if (!qEl) return;
-    const bottom = card.querySelector('.card-bottom') || card.lastElementChild;
     const badge = card.querySelector('.cat-badge');
     const badgeH = badge ? badge.offsetHeight + 14 : 24;
-    const bottomH = bottom ? bottom.offsetHeight : 80;
-    const available = card.offsetHeight - badgeH - bottomH - 48;
-    if (available <= 0) return;
-    let size = 18;
+    // For multi-outcome cards use outcomes-block, for binary use card-bottom
+    const bottomEl = card.querySelector('.outcomes-block') || card.querySelector('.card-bottom') || card.lastElementChild;
+    const bottomH = bottomEl ? bottomEl.offsetHeight + 16 : 80;
+    const volEl = card.querySelector('.vol-line');
+    const volH = volEl ? volEl.offsetHeight + 8 : 0;
+    const cardPad = 36;
+    const available = card.offsetHeight - badgeH - bottomH - volH - cardPad;
+    if (available <= 20) return;
+    let size = 16;
     qEl.style.fontSize = size + 'px';
-    while (size < 72 && qEl.scrollHeight <= available) {
+    while (size < 68 && qEl.scrollHeight <= available) {
       size += 1;
       qEl.style.fontSize = size + 'px';
     }
-    qEl.style.fontSize = Math.max(18, size - 2) + 'px';
+    qEl.style.fontSize = Math.max(16, size - 2) + 'px';
   });
 }
 
