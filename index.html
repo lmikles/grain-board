@@ -286,6 +286,11 @@
     .grain-bar    { background: #9ab59e; }
 
     /* Sports -- muted blue */
+    /* Sports props -- bright teal */
+    .sportsprop-color { color: #4ec9b0; }
+    .sportsprop-badge { background: #0a2420; color: #4ec9b0; }
+    .sportsprop-bar   { background: #4ec9b0; }
+
     .sport-color  { color: #6b9fc5; }
     .sport-badge  { background: #0e2233; color: #8ab8d8; }
     .sport-bar    { background: #6b9fc5; }
@@ -345,7 +350,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v1.8</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.1</span>
       </div>
       </div>
     </div>
@@ -401,12 +406,29 @@ const WILDCARD_KEYWORDS = [
 ];
 const BLOCKLIST = [
   'fed funds rate','basis point','10-year yield','s&p 500 index',
-  'nasdaq index','dow jones','crude oil price','bitcoin price','ethereum price'
+  'nasdaq index','dow jones','crude oil price','bitcoin price','ethereum price',
+  'house race','senate race','congressional','house district','senate district',
+  'IA-','TX-','CA-','NY-','FL-','OH-','PA-','GA-','AZ-','WI-','MI-','NC-',
+  'district court','supreme court justice','ballot measure','referendum',
+  'electoral college','popular vote','majority leader','speaker of the house',
+  'prime minister','chancellor','parliament','gubernatorial'
+];
+
+// Keywords that flag a market as too political for bar fun
+const POLITICAL_PENALTY_KEYWORDS = [
+  'house race','senate race','which party will win','party win','party control',
+  'election','electoral','caucus','primary','ballot','polling','poll average',
+  'approval rating','disapproval','filibuster','legislation','congress',
+  'republican party','democratic party','gop','dnc','rnc'
 ];
 
 function isWildcard(title) {
   const t = (title || '').toLowerCase();
-  return WILDCARD_KEYWORDS.some(k => t.includes(k));
+  if (WILDCARD_KEYWORDS.some(k => t.includes(k))) return true;
+  // Prop bet structures are wildcard-ish
+  if (/first .+ (ever|in history)/i.test(title)) return true;
+  if (/will it (snow|rain|reach|hit)/i.test(title)) return true;
+  return false;
 }
 
 function classifyByKalshiCat(cat) {
@@ -417,40 +439,137 @@ function classifyByKalshiCat(cat) {
   return null;
 }
 
+const SPORT_PROP_PATTERNS = [
+  /will .+ score \d+/i,
+  /will .+ hit \d+/i,
+  /will .+ reach \d+/i,
+  /will .+ record \d+/i,
+  /will .+ break .+ record/i,
+  /will .+ win .+ mvp/i,
+  /will .+ win .+ (award|trophy)/i,
+  /how many .+ will .+ (score|hit|win|make|rush|pass|rebound|steal|block)/i,
+  /will .+ (get traded|be traded|sign with|join|leave)/i,
+  /will .+ retire/i,
+  /will .+ (make|miss) .+ (shot|kick|field goal|free throw)/i,
+  /will .+ go \d+-\d+/i,
+  /will .+ win .+ game/i,
+  /will .+ (sweep|upset|beat|defeat)/i,
+  /over\/under|over .+ \d+|under .+ \d+/i,
+];
+
+function isSportsProp(title) {
+  return SPORT_PROP_PATTERNS.some(rx => rx.test(title || ''));
+}
+
 function classify(title, yes, kalshiCat) {
   const t = (title || '').toLowerCase();
   if (BLOCKLIST.some(k => t.includes(k))) return null;
-  // Keyword overrides take priority
+  if (POLITICAL_PENALTY_KEYWORDS.some(k => t.includes(k))) return null;
+
+  // Philly always first
   if (PHILLY_KEYWORDS.some(k => t.includes(k))) return 'philly';
-  if (SPORT_KEYWORDS.some(k => t.includes(k)))  return 'sports';
-  if (POP_KEYWORDS.some(k => t.includes(k)))    return 'pop';
+
+  // Sports prop before general sports
+  if (isSportsProp(title) && SPORT_KEYWORDS.some(k => t.includes(k))) return 'sportsprop';
+  if (isSportsProp(title)) return 'sportsprop';
+
+  // Pop culture
+  if (POP_KEYWORDS.some(k => t.includes(k))) return 'pop';
+
+  // General sports
+  if (SPORT_KEYWORDS.some(k => t.includes(k))) return 'sports';
+
+  // Fun/weird wildcard
   if (isWildcard(title)) return 'wildcard';
-  // Fall back to Kalshi's own category
+
+  // Kalshi category fallback -- only keep entertaining ones
   const catFromKalshi = classifyByKalshiCat(kalshiCat);
-  if (catFromKalshi) return catFromKalshi;
-  // Accept anything that reads as a clear question -- bar guests can engage with any topic
-  if (/^(will|who|what|when|which|how many|does|is |are |can |has )/i.test(title)) return 'wildcard';
+  if (catFromKalshi === 'sports' || catFromKalshi === 'pop') return catFromKalshi;
+
+  // Accept fun-sounding questions only
+  if (/will .+ (release|announce|drop|debut|perform|appear|star in)/i.test(title)) return 'pop';
+  if (/will .+ (score|win|beat|make|break|set|tie)/i.test(title)) return 'sportsprop';
+
   return null;
 }
 
 function barScore(market) {
   const t = (market.title || '').toLowerCase();
-  // Accept pre-computed yes (0-100) or derive from dollar fields
   const yes = market.yes !== undefined ? market.yes
     : market.yes_bid_dollars !== undefined ? Math.round(market.yes_bid_dollars * 100)
     : 50;
+
+  // Hard kill: too political for bar fun
+  if (POLITICAL_PENALTY_KEYWORDS.some(k => t.includes(k))) return -999;
+
   let score = 0;
-  if (PHILLY_KEYWORDS.some(k => t.includes(k))) score += 55;
-  if (isWildcard(market.title)) score += 35;
+
+  // Prop bet patterns -- these are gold for bar conversation
+  const propPatterns = [
+    /will .+ score \d+/i,           // player scoring milestone
+    /will .+ hit \d+/i,             // statistical milestone
+    /will .+ reach \d+/i,           // milestone
+    /will .+ break .+ record/i,     // record breaking
+    /will .+ win .+ (award|trophy|title|mvp|championship)/i,
+    /will .+ retire/i,              // retirement speculation
+    /will .+ (sign|trade|join|leave)/i, // roster moves
+    /first .+ (ever|in history|to ever)/i, // historic firsts
+    /will there be a .+ (before|by|in)/i,
+    /will .+ (get married|have a baby|announce)/i,
+    /will .+ appear (on|in|at)/i,
+    /will .+ (release|drop|announce) .+ (album|movie|show|season)/i,
+    /how many .+ will .+ (score|win|hit|make)/i,
+    /will it (snow|rain|reach|hit) .+ (in|on|before)/i,  // weather props
+    /will .+ go viral/i,
+    /will .+ (get|be) (cancelled|fired|arrested|divorced|engaged)/i,
+  ];
+  const isProp = propPatterns.some(rx => rx.test(market.title || ''));
+  if (isProp) score += 45;
+
+  // Cute/wholesome patterns
+  const cutePatterns = [
+    /will .+ (cat|dog|pet|puppy|kitten)/i,
+    /will .+ (baby|born|pregnant|birth)/i,
+    /will .+ come back/i,
+    /will .+ apologize/i,
+    /will .+ (hug|kiss|dance)/i,
+    /will .+ be (friends|frenemies)/i,
+    /christmas|holiday|valentine|thanksgiving|halloween/i,
+    /will .+ wear/i,
+    /will .+ (cry|laugh|smile) (on|at|during)/i,
+  ];
+  if (cutePatterns.some(rx => rx.test(market.title || ''))) score += 30;
+
+  // Big boosts for fun categories -- sportsprop is king
+  if (PHILLY_KEYWORDS.some(k => t.includes(k)))  score += 60;  // local love
+  if (isProp && SPORT_KEYWORDS.some(k => t.includes(k))) score += 55; // sports props
+  else if (isProp)                                score += 45;  // other props
+  if (POP_KEYWORDS.some(k => t.includes(k)))      score += 40;  // pop culture
+  if (SPORT_KEYWORDS.some(k => t.includes(k)))    score += 30;  // general sports
+  if (isWildcard(market.title))                   score += 20;  // fun weird stuff
+
+  // Penalize dry political/financial topics
+  const dryKeywords = ['federal reserve','interest rate','inflation','gdp','unemployment',
+    'tariff','trade war','sanctions','treaty','legislation','budget','deficit',
+    'senate','congress','parliament','governor race','attorney general race',
+    'house seat','which party','party win'];
+  if (dryKeywords.some(k => t.includes(k))) score -= 60;
+
+  // Reward close odds (tension = conversation)
   const tension = 50 - Math.abs(yes - 50);
   score += tension * 1.5;
-  if (yes >= 5 && yes <= 20) score += 15;
+
+  // Slight boost for long-shot fun markets (9% yes = "wait, really?")
+  if (yes >= 5 && yes <= 20) score += 10;
+
   const words = (market.title || '').split(' ').length;
-  if (words >= 6 && words <= 18) score += 10;
-  if (yes < 10 || yes > 90) score -= 20;
+  if (words >= 5 && words <= 16) score += 8;
+
   if (yes < 5 || yes > 95) return -999;
+
   const vol = parseFloat(market.volume || 0);
-  if (vol > 0) score += Math.min(25, Math.log10(vol + 1) * 6);
+  if (vol > 0) score += Math.min(20, Math.log10(vol + 1) * 5);
+
   return score;
 }
 
@@ -501,6 +620,10 @@ function getFallback() {
     { title: 'Will the NFL move a team to a new city by 2028?', yes: 29, category: 'sports', volume: 210000 },
     { title: 'Will Kanye West release an album in 2026?', yes: 34, category: 'wildcard', volume: 155000 },
     { title: 'Will there be a sequel to a movie that definitely should not have one?', yes: 77, category: 'wildcard', volume: 88000 },
+    { title: 'Will it snow in Philadelphia on Christmas Day?', yes: 22, category: 'philly', volume: 45000 },
+    { title: 'Will a player score 70+ points in an NBA game this season?', yes: 18, category: 'sports', volume: 62000 },
+    { title: 'Will Taylor Swift get engaged in 2026?', yes: 34, category: 'pop', volume: 88000 },
+    { title: 'Will the Eagles go undefeated in the regular season?', yes: 8, category: 'philly', volume: 71000 },
   ];
 }
 
@@ -650,6 +773,10 @@ async function fetchMarkets() {
     const phillyPool   = pool.filter(m => m.category === 'philly');
     const wildcardPool = pool.filter(m => m.category === 'wildcard');
     const regularPool  = pool.filter(m => m.category !== 'wildcard' && m.category !== 'philly');
+    // Log category breakdown for debugging
+    const catCounts = {};
+    pool.forEach(m => { catCounts[m.category] = (catCounts[m.category]||0)+1; });
+    console.log('Category breakdown:', JSON.stringify(catCounts));
 
     // Merge wildcards + regulars by score
     const nonPhilly = [];
@@ -714,16 +841,18 @@ async function fetchMarkets() {
 }
 
 function cc(cat) {
-  if (cat === 'philly') return 'grain';
-  if (cat === 'sports') return 'sport';
-  if (cat === 'wildcard') return 'wild';
+  if (cat === 'philly')     return 'grain';
+  if (cat === 'sportsprop') return 'sportsprop';
+  if (cat === 'sports')     return 'sport';
+  if (cat === 'wildcard')   return 'wild';
   return 'pop';
 }
 
 function catLabel(cat) {
-  if (cat === 'philly') return 'Philly / Delaware';
-  if (cat === 'sports') return 'Sports';
-  if (cat === 'wildcard') return 'Wild card';
+  if (cat === 'philly')     return 'Philly / Delaware';
+  if (cat === 'sportsprop') return 'Sports prop';
+  if (cat === 'sports')     return 'Sports';
+  if (cat === 'wildcard')   return 'Wild card';
   return 'Pop Culture';
 }
 
