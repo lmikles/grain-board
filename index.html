@@ -355,7 +355,7 @@
           Kalshi
         </span>
         prediction markets
-        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.6</span>
+        <span style="color:#9ab59e;margin-left:8px;font-size:11px;font-weight:500;">v2.7</span>
       </div>
       </div>
     </div>
@@ -895,8 +895,10 @@ async function fetchMarkets() {
       else nonPhilly.push(regularPool[ri++]);
     }
 
-    // Build slides: 1 recycling Philly + 3 unique non-Philly each
+    // Build slides: Philly appears on every 3rd slide, not every slide
+    // This stops the same 3-4 Delaware markets from feeling like wallpaper
     const TARGET_SLIDES = 60;
+    const PHILLY_FREQUENCY = 3; // 1 in every N slides gets a Philly card
     const builtSlides = [];
     let npIdx = 0;
     let phillyIdx = 0;
@@ -905,7 +907,10 @@ async function fetchMarkets() {
       const slide = [];
       let wcCount = 0;
 
-      if (phillyPool.length > 0) {
+      // Include a Philly card every PHILLY_FREQUENCY slides
+      const includePhilly = phillyPool.length > 0 &&
+        (builtSlides.length % PHILLY_FREQUENCY === 0);
+      if (includePhilly) {
         slide.push(phillyPool[phillyIdx % phillyPool.length]);
         phillyIdx++;
       }
@@ -918,7 +923,6 @@ async function fetchMarkets() {
       }
 
       if (slide.length < 4) {
-        // Pad with fallback cards rather than drop the slide
         const fb = getFallback();
         while (slide.length < 4) slide.push(fb[slide.length % fb.length]);
       }
